@@ -44,7 +44,7 @@ def eng_text_clean(text):
     list_no_stopwords_stem = [porter_stemmer.stem(i) for i in tokens if i not in cache_english_stopwords and len(i) > 1]
 
     # 去除 否定词、情感度词和情感词
-    tags = set(['JJ', 'JJR', 'JJS', 'RB', 'RBR', 'RBS'])
+    tags = set(['JJ', 'JJR', 'JJS', 'RB', 'RBR', 'RBS', "NEG"])
     ret = []
     for word, pos in nltk.pos_tag(list_no_stopwords_stem):
         if pos not in tags:
