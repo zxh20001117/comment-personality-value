@@ -57,3 +57,22 @@ def eng_text_clean(text):
     return text_filtered
 
 # eng_text_clean('Quiet location but so close to the London buzz.  Good restaurants and pubs nearby but do your research as many are closed on Sundays. Friendly efficient staff, great breakfast, had one of the best nights sleep Ive ever had in London ')
+
+def content2attribute_sentences(content, stem_list):
+    porter_stemmer = PorterStemmer()
+    sentences = [s.strip().lower() for s in re.split('[,.!?]', content) if len(s.strip()) >= 10]
+    res = []
+    for sentence in sentences:
+        for word in word_tokenize(sentence):
+            if porter_stemmer.stem(word) in stem_list:
+                text_no_small_words = re.sub(r'\b\w{1,2}\b', '', sentence)
+
+                remove = str.maketrans(string.punctuation, "{:<32}".format(""))
+                text_no_small_words = text_no_small_words.translate(remove)
+                text_no_small_words = re.sub(r'[^A-Za-z0-9 ]+', ' ', text_no_small_words)
+
+                text_no_whitespace = re.sub(r'\s\s+', ' ', text_no_small_words)
+                text_no_whitespace = text_no_whitespace.lstrip(' ')
+                res.append(text_no_whitespace)
+                break
+    return res
