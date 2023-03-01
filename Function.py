@@ -10,6 +10,7 @@ from nltk.stem.porter import PorterStemmer
 stoplist = list(pd.read_csv('stop_words_eng.txt', names=['w'], encoding='utf-8', engine='python').w)
 cache_english_stopwords = stopwords.words('english') + stoplist
 
+
 def eng_text_clean(text):
     #     print('原始数据:', text, '\n')
     # 去掉一些价值符号
@@ -56,11 +57,11 @@ def eng_text_clean(text):
     #     print('过滤后:', text_filtered)
     return text_filtered
 
+
 # eng_text_clean('Quiet location but so close to the London buzz.  Good restaurants and pubs nearby but do your research as many are closed on Sundays. Friendly efficient staff, great breakfast, had one of the best nights sleep Ive ever had in London ')
 
-def content2attribute_sentences(content, stem_list):
+def content2attribute_sentences(sentences, stem_list):
     porter_stemmer = PorterStemmer()
-    sentences = [s.strip().lower() for s in re.split('[,.!?]', content) if len(s.strip()) >= 10]
     res = []
     for sentence in sentences:
         for word in word_tokenize(sentence):
@@ -76,3 +77,8 @@ def content2attribute_sentences(content, stem_list):
                 res.append(text_no_whitespace)
                 break
     return res
+
+
+def content_slice2sentences(content):
+    sentences = [s.strip().lower() for s in re.split('[,.!?]', content) if len(s.strip()) >= 10]
+    return sentences
