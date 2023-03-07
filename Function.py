@@ -3,6 +3,7 @@ import string
 import time
 
 import nltk
+import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 from nltk import word_tokenize
@@ -150,9 +151,24 @@ def filter_emotionless_sentences(sentences):
     return res
 
 
-def get_word2vev_vectors(sentences):
-    pretrained_model = KeyedVectors.load_word2vec_format("word2vec model/GoogleNews-vectors-negative300.bin.gz",
-                                                         binary=True)
+def get_word2vev_vectors(sentences, model):
+    w2v_word_list = list(model.index_to_key)
+    maxSentencelen = 24
+    maxWordCount = 20
+
+    docVec = np.zeros((maxSentencelen, maxWordCount, 300))
+    for i in range(min(len(sentences), maxSentencelen)):
+        get_sentence_vectors(sentences[i], docVec[i], model, w2v_word_list)
+    return docVec
+
+
+def get_sentence_vectors(sentence, sentenceVector, model, w2v_word_list):
+    maxWordCount = 20
+    words = sentence.split()
+
+    for i in range(min(len(words), maxWordCount)):
+        if words[i] in w2v_word_list:
+            sentenceVector[i] += model.get_vector(words[i])
 
 
 def process_user_personality_sentences():
@@ -166,7 +182,7 @@ def process_user_personality_sentences():
     sliceTime = time.time()
     print(f'it takes {int(sliceTime - wordLoadTime)} s for slicing contents\n')
 
-    print("原始数据中 按照user_link汇总之后 评论的各项统计数据：")
+    print("\n原始数据中 按照user_link汇总之后 评论的各项统计数据：")
     chat_statistics(data)
     words_in_sentences_statistics(data)
 
@@ -174,14 +190,31 @@ def process_user_personality_sentences():
     cleanTime = time.time()
     print(f'it takes {int(cleanTime - sliceTime)} s for cleaning contents\n')
 
-    # data['sentences'] = data.apply(lambda x: filter_emotionless_sentences(x['sentences']), axis=1)
-    # filterTime = time.time()
-    # print(f'it takes {int(filterTime - cleanTime)} s for filtering contents\n')
+    data['sentences'] = data.apply(lambda x: filter_emotionless_sentences(x['sentences']), axis=1)
+    filterTime = time.time()
+    print(f'it takes {int(filterTime - cleanTime)} s for filtering contents\n')
     # data.to_json('dataProcess/user filtered sentences.json')
     # data.to_excel('dataProcess/user filtered sentences.xlsx')
 
     del data
     data = pd.read_json('dataProcess/user filtered sentences.json')
-    print("根据人格分析预处理规则处理后 user_link汇总 评论的各项统计数据：")
+    print("\n根据人格分析预处理规则处理后 user_link汇总 评论的各项统计数据：")
     chat_statistics(data)
     words_in_sentences_statistics(data)
+
+    data['sentences'] = data.apply(lambda x: spilt_20_sentences(x['sentences']), axis=1)
+    # data = data[data['sentences'].map(len) > 0]
+    print("\n每一句最长20单词处理之后 评论的各项统计数据：")
+    chat_statistics(data)
+    words_in_sentences_statistics(data)
+
+def spilt_20_sentences(sentences):
+    maxWordCount = 20
+    res = []
+    for sentence in sentences:
+        words = sentence.split()
+        num = len(words)
+        for i in range(num // maxWordCount):
+            res.append(" ".join(words[i*maxWordCount:(i+1)*maxWordCount]))
+        res.append(" ".join(words[(num // maxWordCount)*maxWordCount:]))
+    return res
