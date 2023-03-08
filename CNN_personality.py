@@ -3,10 +3,12 @@ import torch.nn as nn
 
 import torch.nn.functional as F
 
+from Function import make_train_dataset
+
 
 class CNNModel(nn.Module):
-    def __init__(self, seq_nums=17,
-                 words_nums=50, words_channels=300, ma_feats=84,
+    def __init__(self, seq_nums=25,
+                 words_nums=20, words_channels=300, ma_feats=117,
                  conv_channel=200, conv_nums=3, linear_channel=200, out_channels=2):
         super().__init__()
         self.seq_nums = seq_nums
@@ -20,10 +22,13 @@ class CNNModel(nn.Module):
 
         self.conv1 = nn.Conv1d(in_channels=words_channels, out_channels=conv_channel, kernel_size=1, stride=1,
                                padding=0)
+        self.relu1 = nn.ReLU()
         self.conv2 = nn.Conv1d(in_channels=words_channels, out_channels=conv_channel, kernel_size=2, stride=1,
                                padding=0)
+        self.relu2 = nn.ReLU()
         self.conv3 = nn.Conv1d(in_channels=words_channels, out_channels=conv_channel, kernel_size=3, stride=1,
                                padding=0)
+        self.relu3 = nn.ReLU()
 
         self.maxpooling1 = nn.AdaptiveMaxPool1d(1)
         self.maxpooling2 = nn.AdaptiveMaxPool1d(1)
@@ -45,9 +50,9 @@ class CNNModel(nn.Module):
 
         x = x.permute(0, 2, 1)
 
-        out1 = self.conv1(x)
-        out2 = self.conv2(x)
-        out3 = self.conv3(x)
+        out1 = self.relu1(self.conv1(x))
+        out2 = self.relu2(self.conv2(x))
+        out3 = self.relu3(self.conv3(x))
 
         out1 = self.maxpooling1(out1).squeeze()
         out2 = self.maxpooling1(out2).squeeze()
@@ -74,24 +79,19 @@ class CNNModel(nn.Module):
 
 if __name__ == "__main__":
     model = CNNModel().cuda()
-    x = torch.randn(2, 17, 50, 300).cuda()
-    ma = torch.randn(2, 84).cuda()
-
-    out = model(x, ma)
 
     criterion = nn.CrossEntropyLoss()  # 交叉熵损失函数
-    optimizer = torch.optim.Adadelta(model.parameters(), lr=0.01)  # Adadelta梯度优化器
+    optimizer = torch.optim.Adadelta(model.parameters(), lr=0.001)  # Adadelta梯度优化器
 
-    loss = criterion(out, torch.tensor([1, 1]).cuda())
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-
+    train_loader, test_loader = make_train_dataset('cEXT')
     for epoch in range(200):
-        pred = model(x, ma)
-        loss = criterion(pred, torch.tensor([1, 1]).cuda())  # batch_y类标签就好，不用one-hot形式
-        if (epoch + 1) % 10 == 0:
-            print('Epoch:', '%4d' % (epoch + 1), 'loss =', '{:.6f}'.format(loss))
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        for batch_x, batch_m, batch_y in train_loader:
+            batch_x, batch_m, batch_y = batch_x.cuda(), batch_m.cuda(), batch_y.cuda()
+            pred = model(batch_x, batch_m)
+            loss = criterion(pred, batch_y)  # batch_y类标签就好，不用one-hot形式
+
+            if (epoch + 1) % 10 == 0:
+                print('Epoch:', '%04d' % (epoch + 1), 'loss =', '{:.6f}'.format(loss))
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
