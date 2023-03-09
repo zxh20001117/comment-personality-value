@@ -17,6 +17,11 @@ from nltk.stem.porter import PorterStemmer
 from sklearn.model_selection import train_test_split
 from gensim.models import KeyedVectors
 
+from configparser import ConfigParser
+
+conf = ConfigParser()
+conf.read("config.ini", encoding='UTF-8')
+
 stoplist = list(pd.read_csv('stop_words_eng.txt', names=['w'], encoding='utf-8', engine='python').w)
 cache_english_stopwords = stopwords.words('english') + stoplist
 UNKVEC = np.load("Global UNKVEC.npy")
@@ -164,18 +169,20 @@ def filter_emotionless_sentences(sentences, emotional_words):
 
 
 def get_word2vev_vectors(sentences, model, w2v_word_dic):
-    maxSentenceLen = 25
-    maxWordCount = 20
+    maxSentenceLen = conf.getint("model", "seq_nums")
+    maxWordCount = conf.getint("model", "words_nums")
 
     docVec = np.zeros((maxSentenceLen, maxWordCount, 300))
     for i in range(min(len(sentences), maxSentenceLen)):
         get_sentence_vectors(sentences[i], docVec[i], model, w2v_word_dic)
-
+    for i in range(len(sentences), maxSentenceLen):
+        for j in range(maxWordCount):
+            docVec[i][j] -= np.zeros(300)
     return docVec
 
 
 def get_sentence_vectors(sentence, sentence_vector, model, w2v_word_dic):
-    maxWordCount = 20
+    maxWordCount = conf.getint("model", "words_nums")
     words = sentence.split()
 
     for i in range(min(len(words), maxWordCount)):
@@ -183,6 +190,8 @@ def get_sentence_vectors(sentence, sentence_vector, model, w2v_word_dic):
             sentence_vector[i] += model.get_vector(words[i])
         else:
             sentence_vector[i] += UNKVEC
+    for i in range(len(words), maxWordCount):
+        sentence_vector[i] -= np.zeros(300)
 
 
 def process_user_personality_sentences():
@@ -229,6 +238,9 @@ def spilt_20_sentences(sentences):
     for sentence in sentences:
         words = sentence.split()
         num = len(words)
+        if num < 30:
+            res.append(sentence)
+            continue
         group_num = num // maxWordCount
         remainder = num % maxWordCount
         for i in range(group_num):
@@ -249,19 +261,20 @@ def process_train_data(pretrained_model):
 
     startTime = time.time()
     data['sentences'] = data.apply(lambda x: content_slice2sentences(x['TEXT'], include_comma=False), axis=1)
-    print(data.iloc[0, 6])
+    # print(data.iloc[0, 6])
     data['sentences'] = data.apply(lambda x: sentence_clean(x['sentences']), axis=1)
-    print(data.iloc[0, 6])
+    # print(data.iloc[0, 6])
     sentenceGenTime = time.time()
     print(f'it takes {int(sentenceGenTime - startTime)} s for preprocessing\n')
 
     emotional_words = get_emtional_words()
-    data['sentences'] = data.apply(lambda x: filter_emotionless_sentences(x['sentences'], emotional_words), axis=1)
     data['sentences'] = data.apply(lambda x: spilt_20_sentences(x['sentences']), axis=1)
+    data['sentences'] = data.apply(lambda x: filter_emotionless_sentences(x['sentences'], emotional_words), axis=1)
     data['sentences'] = data.apply(lambda x: delete_half_sentences(x['sentences']), axis=1)
+
     preprocessingTime = time.time()
     print(f'it takes {int(preprocessingTime - sentenceGenTime)} s for filtering\n')
-    print(data.iloc[0, 6])
+    # print(data.iloc[0, 6])
     print("\n 训练集处理之后 评论的各项统计数据：")
     chat_statistics(data)
     words_in_sentences_statistics(data)
@@ -270,10 +283,10 @@ def process_train_data(pretrained_model):
     data['docVector'] = data.apply(lambda x: get_word2vev_vectors(x['sentences'], pretrained_model, wordDic), axis=1)
     vectorGeneratingTime = time.time()
     print(f'it takes {int(vectorGeneratingTime - preprocessingTime)} s for generating doc vectors\n')
-    input()
 
     docVector = np.stack([i for i in data['docVector']], axis=0)
     np.save('dataProcess/train data docVector.npy', docVector)
+    print(docVector.shape)
 
     data = data.drop(['TEXT', 'sentenceNum', 'docVector', 'sentences'], axis=1)
     data.to_json('dataProcess/train data label.json')
@@ -299,9 +312,12 @@ def make_train_dataset(label):
     labelData = pd.read_json('dataProcess/train data label.json')[label]
     docVec = np.load('dataProcess/train data docVector.npy')
     liwcFeatures = pd.read_csv('dataProcess/train LIWC-22 Results.csv')
+    from sklearn import preprocessing
+    zscore = preprocessing.StandardScaler()
+    liwcFeatures = zscore.fit_transform(liwcFeatures)
 
     input_vector = torch.FloatTensor(docVec)
-    input_liwc = torch.FloatTensor(liwcFeatures.values)
+    input_liwc = torch.FloatTensor(liwcFeatures)
     output_label = torch.LongTensor(labelData)
 
     x_train, x_test, m_train, m_test, y_train, y_test = train_test_split(input_vector, input_liwc, output_label, test_size=0.2,random_state = 0)
@@ -309,7 +325,7 @@ def make_train_dataset(label):
     train_dataset = Data.TensorDataset(torch.tensor(x_train), torch.tensor(m_train), torch.tensor(y_train))
     test_dataset = Data.TensorDataset(torch.tensor(x_test), torch.tensor(m_test), torch.tensor(y_test))
 
-    batch_size = 16
+    batch_size = 4
     train_loader = Data.DataLoader(
         dataset=train_dataset,  # 数据，封装进Data.TensorDataset()类的数据
         batch_size=batch_size,  # 每块的大小

@@ -19,4 +19,3 @@ modelLoadTime = time.time()
 print(f'it takes {int(modelLoadTime - startTime)} s for loading word2vec model\n')
 
 process_train_data(pretrained_model)
-

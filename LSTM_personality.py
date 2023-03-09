@@ -4,11 +4,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from Function import make_train_dataset
+from configparser import ConfigParser
+
+conf = ConfigParser()
+conf.read("config.ini", encoding='UTF-8')
 
 
 class LSTMModel(nn.Module):
-    def __init__(self, seq_nums=25,
-                 words_nums=20, words_channels=300, ma_feats=117,
+    def __init__(self, seq_nums=conf.getint("model", "seq_nums"),
+                 words_nums=conf.getint("model", "words_nums"),
+                 words_channels=conf.getint("model", "words_channels"),
+                 ma_feats=conf.getint("model", "ma_feats"),
                  conv_channel=200, conv_nums=3, linear_channel=200, out_channels=2):
         super().__init__()
         self.seq_nums = seq_nums
@@ -42,8 +48,7 @@ class LSTMModel(nn.Module):
         x = x.reshape(b, s * w, c)
 
         out, (_, _) = self.lstm_filter(x)
-        output = out[:, -1, :].squeeze()
-
+        output = out[:, -1, :]
         out = torch.cat((output, ma), dim=-1)
 
         out = self.linear1(out)
@@ -61,18 +66,43 @@ if __name__ == "__main__":
     model = LSTMModel().cuda()
 
     criterion = nn.CrossEntropyLoss()  # 交叉熵损失函数
-    optimizer = torch.optim.Adadelta(model.parameters(), lr=0.001)  # Adadelta梯度优化器
+    optimizer = torch.optim.Adadelta(model.parameters(), lr=0.01)  # Adadelta梯度优化器
 
     train_loader, test_loader = make_train_dataset('cEXT')
-    for epoch in range(200):
+    for epoch in range(350):
+        loss_list = []
         for batch_x, batch_m, batch_y in train_loader:
             batch_x, batch_m, batch_y = batch_x.cuda(), batch_m.cuda(), batch_y.cuda()
             pred = model(batch_x, batch_m)
             loss = criterion(pred, batch_y)  # batch_y类标签就好，不用one-hot形式
 
-            if (epoch + 1) % 10 == 0:
-                print('Epoch:', '%04d' % (epoch + 1), 'loss =', '{:.6f}'.format(loss))
+            loss_list.append(float(f'{loss}'))
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+        if (epoch + 1) % 10 == 0:
+            print('Epoch:', '%04d' % (epoch + 1), 'loss =', '{:.6f}'.format(sum(loss_list) / len(loss_list)))
+
+            test_acc_list = []
+            test_loss = 0
+            correct = 0
+            for data, m, target in test_loader:
+                data, m, target = data.cuda(), m.cuda(), target.cuda()
+                output = model(data, m)
+                pred = output.max(1, keepdim=True)[1]  # 找到概率最大的下标
+                correct += pred.eq(target.view_as(pred)).sum().item()
+            test_acc_list.append(100. * correct / len(test_loader.dataset))
+            print('test  Accuracy: {}/{} ({:.0f}%)'.format(correct, len(test_loader.dataset),
+
+                                                           100. * correct / len(test_loader.dataset)))
+            correct = 0
+            train_acc_list = []
+            for data, m, target in train_loader:
+                data, m, target = data.cuda(), m.cuda(), target.cuda()
+                output = model(data, m)
+                pred = output.max(1, keepdim=True)[1]  # 找到概率最大的下标
+                correct += pred.eq(target.view_as(pred)).sum().item()
+            train_acc_list.append(100. * correct / len(train_loader.dataset))
+            print('train Accuracy: {}/{} ({:.0f}%)\n'.format(correct, len(train_loader.dataset),
+                                                             100. * correct / len(train_loader.dataset)))
 

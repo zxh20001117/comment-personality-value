@@ -4,11 +4,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from Function import make_train_dataset
+from configparser import ConfigParser
+
+conf = ConfigParser()
+conf.read("config.ini", encoding='UTF-8')
 
 
 class CNNModel(nn.Module):
-    def __init__(self, seq_nums=25,
-                 words_nums=20, words_channels=300, ma_feats=117,
+    def __init__(self, seq_nums=conf.getint("model", "seq_nums"),
+                 words_nums=conf.getint("model", "words_nums"),
+                 words_channels=conf.getint("model", "words_channels"),
+                 ma_feats=conf.getint("model", "ma_feats"),
                  conv_channel=200, conv_nums=3, linear_channel=200, out_channels=2):
         super().__init__()
         self.seq_nums = seq_nums
@@ -29,6 +35,9 @@ class CNNModel(nn.Module):
         self.conv3 = nn.Conv1d(in_channels=words_channels, out_channels=conv_channel, kernel_size=3, stride=1,
                                padding=0)
         self.relu3 = nn.ReLU()
+
+        self.conv4 = nn.Conv1d(in_channels=conv_channel*3, out_channels=conv_channel*3, kernel_size=1, stride=1,
+                               padding=0)
 
         self.maxpooling1 = nn.AdaptiveMaxPool1d(1)
         self.maxpooling2 = nn.AdaptiveMaxPool1d(1)
@@ -55,8 +64,8 @@ class CNNModel(nn.Module):
         out3 = self.relu3(self.conv3(x))
 
         out1 = self.maxpooling1(out1).squeeze()
-        out2 = self.maxpooling1(out2).squeeze()
-        out3 = self.maxpooling1(out3).squeeze()
+        out2 = self.maxpooling2(out2).squeeze()
+        out3 = self.maxpooling3(out3).squeeze()
 
         out1 = out1.reshape(b, s, self.conv_channel)
         out2 = out2.reshape(b, s, self.conv_channel)
@@ -65,8 +74,8 @@ class CNNModel(nn.Module):
         out = torch.cat((out1, out2, out3), dim=-1)
 
         out = out.permute(0, 2, 1)
-        out = self.maxpooling4(out).squeeze()
-
+        # out = self.conv4(out)
+        out = self.maxpooling4( out).squeeze(2)
         out = torch.cat((out, ma), dim=-1)
 
         out = self.linear1(out)
@@ -74,24 +83,47 @@ class CNNModel(nn.Module):
         out = self.linear2(out)
 
         out = F.softmax(out, dim=-1)
-
         return out
 
 if __name__ == "__main__":
     model = CNNModel().cuda()
 
     criterion = nn.CrossEntropyLoss()  # 交叉熵损失函数
-    optimizer = torch.optim.Adadelta(model.parameters(), lr=0.001)  # Adadelta梯度优化器
+    optimizer = torch.optim.Adadelta(model.parameters(), lr=0.01)  # Adadelta梯度优化器
 
     train_loader, test_loader = make_train_dataset('cEXT')
-    for epoch in range(200):
+    for epoch in range(350):
+        loss_list = []
         for batch_x, batch_m, batch_y in train_loader:
             batch_x, batch_m, batch_y = batch_x.cuda(), batch_m.cuda(), batch_y.cuda()
             pred = model(batch_x, batch_m)
             loss = criterion(pred, batch_y)  # batch_y类标签就好，不用one-hot形式
 
-            if (epoch + 1) % 10 == 0:
-                print('Epoch:', '%04d' % (epoch + 1), 'loss =', '{:.6f}'.format(loss))
+            loss_list.append(float(f'{loss}'))
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+        if (epoch + 1) % 10 == 0:
+            print('Epoch:', '%04d' % (epoch + 1), 'loss =', '{:.6f}'.format(sum(loss_list)/len(loss_list)))
+
+            test_acc_list = []
+            test_loss = 0
+            correct = 0
+            for data, m, target in test_loader:
+                data, m, target = data.cuda(), m.cuda(), target.cuda()
+                output = model(data, m)
+                pred = output.max(1, keepdim=True)[1]  # 找到概率最大的下标
+                correct += pred.eq(target.view_as(pred)).sum().item()
+            test_acc_list.append(100. * correct / len(test_loader.dataset))
+            print('test  Accuracy: {}/{} ({:.0f}%)'.format(correct, len(test_loader.dataset),
+                                                       100. * correct / len(test_loader.dataset)))
+            train_acc_list = []
+            correct = 0
+            for data, m, target in train_loader:
+                data, m, target = data.cuda(), m.cuda(), target.cuda()
+                output = model(data, m)
+                pred = output.max(1, keepdim=True)[1]  # 找到概率最大的下标
+                correct += pred.eq(target.view_as(pred)).sum().item()
+            train_acc_list.append(100. * correct / len(train_loader.dataset))
+            print('train Accuracy: {}/{} ({:.0f}%)\n'.format(correct, len(train_loader.dataset),
+                                                       100. * correct / len(train_loader.dataset)))
