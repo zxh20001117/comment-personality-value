@@ -115,7 +115,7 @@ if __name__ == "__main__":
                 pred = output.max(1, keepdim=True)[1]  # 找到概率最大的下标
                 correct += pred.eq(target.view_as(pred)).sum().item()
             test_acc_list.append(100. * correct / len(test_loader.dataset))
-            print('test  Accuracy: {}/{} ({:.0f}%)'.format(correct, len(test_loader.dataset),
+            print('test  Accuracy: {}/{} ({:.2f}%)'.format(correct, len(test_loader.dataset),
                                                        100. * correct / len(test_loader.dataset)))
             train_acc_list = []
             correct = 0
@@ -125,5 +125,5 @@ if __name__ == "__main__":
                 pred = output.max(1, keepdim=True)[1]  # 找到概率最大的下标
                 correct += pred.eq(target.view_as(pred)).sum().item()
             train_acc_list.append(100. * correct / len(train_loader.dataset))
-            print('train Accuracy: {}/{} ({:.0f}%)\n'.format(correct, len(train_loader.dataset),
+            print('train Accuracy: {}/{} ({:.2f}%)\n'.format(correct, len(train_loader.dataset),
                                                        100. * correct / len(train_loader.dataset)))
