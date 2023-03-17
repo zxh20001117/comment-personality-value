@@ -10,7 +10,7 @@ conf = ConfigParser()
 conf.read("config.ini", encoding='UTF-8')
 
 
-class CNNModel(nn.Module):
+class CNN_LSTMModel(nn.Module):
     def __init__(self, seq_nums=conf.getint("model", "seq_nums"),
                  words_nums=conf.getint("model", "words_nums"),
                  words_channels=conf.getint("model", "words_channels"),
@@ -25,6 +25,7 @@ class CNNModel(nn.Module):
         self.conv_nums = conv_nums
         self.linear_channel = linear_channel
         self.out_channels = out_channels
+        self.hiddensize = 200
 
         self.conv1 = nn.Conv1d(in_channels=words_channels, out_channels=conv_channel, kernel_size=1, stride=1,
                                padding=0)
@@ -36,7 +37,7 @@ class CNNModel(nn.Module):
                                padding=0)
         self.relu3 = nn.ReLU()
 
-        self.conv4 = nn.Conv1d(in_channels=conv_channel*3, out_channels=conv_channel*3, kernel_size=1, stride=1,
+        self.conv4 = nn.Conv1d(in_channels=conv_channel * 3, out_channels=conv_channel * 3, kernel_size=1, stride=1,
                                padding=0)
 
         self.maxpooling1 = nn.AdaptiveMaxPool1d(1)
@@ -44,8 +45,14 @@ class CNNModel(nn.Module):
         self.maxpooling3 = nn.AdaptiveMaxPool1d(1)
 
         self.maxpooling4 = nn.AdaptiveMaxPool1d(1)
+        self.lstm_filter = nn.LSTM(
+            input_size=conv_channel * 3,  #
+            hidden_size=self.hiddensize,
+            bidirectional=True,
+            batch_first=True
+        )
 
-        self.linear1 = nn.Linear(in_features=conv_nums * conv_channel + ma_feats, out_features=linear_channel)
+        self.linear1 = nn.Linear(in_features=self.hiddensize * 2 + ma_feats, out_features=linear_channel)
         self.act = nn.Sigmoid()
         self.linear2 = nn.Linear(in_features=linear_channel, out_features=out_channels)
 
@@ -72,11 +79,11 @@ class CNNModel(nn.Module):
         out3 = out3.reshape(b, s, self.conv_channel)
 
         out = torch.cat((out1, out2, out3), dim=-1)
-
-        out = out.permute(0, 2, 1)
+#         out = out.permute(0, 2, 1)
         # out = self.conv4(out)
-        out = self.maxpooling4( out).squeeze(2)
-        out = torch.cat((out, ma), dim=-1)
+#         out = self.maxpooling4(out).squeeze(2)
+        out, (_, _) = self.lstm_filter(out)
+        out = torch.cat((out[:, -1, :], ma), dim=-1)
 
         out = self.linear1(out)
         out = self.act(out)
@@ -86,7 +93,7 @@ class CNNModel(nn.Module):
         return out
 
 if __name__ == "__main__":
-    model = CNNModel().cuda()
+    model = CNN_LSTMModel().cuda()
 
     # criterion = nn.CrossEntropyLoss()  # 交叉熵损失函数
     criterion = nn.NLLLoss()  # 负对数似然
