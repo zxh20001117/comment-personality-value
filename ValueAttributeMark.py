@@ -14,8 +14,9 @@ wordLoadTime = time.time()
 print(data.keys())
 data['sentences'] = data.apply(lambda x: content_slice2sentences(f"{x['title']}. {x['review']}"), axis=1)
 for values in attribute_group.keys():
+    attribute_stems = {i : 0 for i in attribute_group[values]}
     data[f'{values}_sentences'] = data.apply(lambda x: content2attribute_sentences(
-        x['sentences'], attribute_group[values]
+        x['sentences'], attribute_stems
     )
                                              , axis=1)
 wordProcessTime = time.time()
@@ -27,4 +28,4 @@ result = data.drop(['rating_review', 'n_review_user',
                     'date_of_stay', 'review',
                     'sentences']
                    , axis=1)
-result.to_json('dataProcess/value attribute sentences.json')
+result.to_json('dataProcess/value attribute sentences 0326.json')

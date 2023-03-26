@@ -3,7 +3,7 @@ import torch.nn as nn
 
 import torch.nn.functional as F
 
-from Function import make_train_dataset
+from Function4Torch import make_train_dataset
 from configparser import ConfigParser
 
 conf = ConfigParser()
