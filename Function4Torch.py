@@ -1,5 +1,10 @@
+import numpy as np
+import pandas as pd
 import torch
 import torch.utils.data as Data
+from sklearn.model_selection import train_test_split
+
+
 def make_train_dataset(label):
     labelData = pd.read_json('dataProcess/train data label.json')[label]
     docVec = np.load('dataProcess/train data docVector.npy')
