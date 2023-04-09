@@ -48,11 +48,11 @@ class CNN_LSTMModel(nn.Module):
         self.lstm_filter = nn.LSTM(
             input_size=conv_channel * 3,  #
             hidden_size=self.hiddensize,
-            bidirectional=True,
+            bidirectional=False,
             batch_first=True
         )
 
-        self.linear1 = nn.Linear(in_features=self.hiddensize * 2 + ma_feats, out_features=linear_channel)
+        self.linear1 = nn.Linear(in_features=self.hiddensize + ma_feats, out_features=linear_channel)
         self.act = nn.Sigmoid()
         self.linear2 = nn.Linear(in_features=linear_channel, out_features=out_channels)
 
@@ -82,8 +82,9 @@ class CNN_LSTMModel(nn.Module):
 #         out = out.permute(0, 2, 1)
         # out = self.conv4(out)
 #         out = self.maxpooling4(out).squeeze(2)
-        out, (_, _) = self.lstm_filter(out)
-        out = torch.cat((out[:, -1, :], ma), dim=-1)
+        out, (hidden_last, cn_last) = self.lstm_filter(out)
+        # out = torch.cat((out[:, -1, :], ma), dim=-1)
+        out = torch.cat((hidden_last[-1], ma), dim=-1)
 
         out = self.linear1(out)
         out = self.act(out)
@@ -97,7 +98,7 @@ if __name__ == "__main__":
 
     # criterion = nn.CrossEntropyLoss()  # 交叉熵损失函数
     criterion = nn.NLLLoss()  # 负对数似然
-    optimizer = torch.optim.Adadelta(model.parameters(), lr=0.01)  # Adadelta梯度优化器
+    optimizer = torch.optim.Adadelta(model.parameters(), lr=5e-3)  # Adadelta梯度优化器
 
     train_loader, test_loader = make_train_dataset('cEXT')
     for epoch in range(350):
