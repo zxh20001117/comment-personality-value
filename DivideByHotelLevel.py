@@ -1,8 +1,8 @@
 import pickle
 
 import pandas as pd
+from gensim.models import KeyedVectors
 
-from DocVectorGenerate import pretrained_model
 from Function import content_slice2sentences, content2attribute_sentences, sentence_clean, get_emtional_words, \
     spilt_20_sentences
 
@@ -10,16 +10,19 @@ with open("dataProcess/value_attributes.pickle", "rb") as f:
     attribute_group = pickle.load(f)
 
 
-data = pd.read_excel('dataProcess/all merged.xlsx')
-hotel_level = pd.read_excel('dataProcess/hotel level.xlsx')
+data = pd.read_excel('dataProcess/hotel level merged.xlsx')
+hotel_level = pd.read_excel('dataProcess/hotel_level_links.xlsx')
 emotional_words = get_emtional_words()
-level_list = ['high', 'middle', 'low']
+level_list = ['high', 'middle']
+pretrained_model =KeyedVectors.load_word2vec_format("word2vec model/GoogleNews-vectors-negative300.bin.gz",
+                                                     binary=True)
+
 wordDic = {pretrained_model.index_to_key[i]: 'i' for i in range(len(pretrained_model.index_to_key))}
 
 for level in level_list:
-    hotel_names = hotel_level[hotel_level['level'] == level]['hotel names']
+    hotel_names = hotel_level[hotel_level['level'] == level]['hotelname']
     level_data = data[data['level'].isin(hotel_names)]
-    level_data = level_data[['id_review', 'title', 'review'], 'rating']
+    level_data = level_data[['id_review', 'title', 'review', 'rating']]
     level_data['sentences'] = level_data.apply(lambda x: content_slice2sentences(f"{x['title']}. {x['review']}"), axis=1)
 
     for values in attribute_group.keys():
