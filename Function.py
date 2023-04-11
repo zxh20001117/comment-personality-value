@@ -24,6 +24,10 @@ cache_english_stopwords = stopwords.words('english') + stoplist
 UNKVEC = np.load("Global UNKVEC.npy")
 
 
+def cal_run_time(record_time, task):
+    print(f"{time.time() - record_time:.2f} seconds for {task}")
+    return time.time()
+
 def eng_text_clean(text):
     #     print('原始数据:', text, '\n')
     # 去掉一些价值符号
