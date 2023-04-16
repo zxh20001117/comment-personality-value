@@ -1,3 +1,4 @@
+import pandas as pd
 import torch
 import torch.nn as nn
 
@@ -49,6 +50,8 @@ class CNNModel(nn.Module):
         self.act = nn.Sigmoid()
         self.linear2 = nn.Linear(in_features=linear_channel, out_features=out_channels)
 
+        self.dropout1 = nn.Dropout(0.5)
+
     def forward(self, x, ma=None):
         '''
         x : [batch_size, seq_nums, words_nums, words_channels]
@@ -75,25 +78,28 @@ class CNNModel(nn.Module):
 
         out = out.permute(0, 2, 1)
         # out = self.conv4(out)
-        out = self.maxpooling4( out).squeeze(2)
+        out = self.maxpooling4(out).squeeze(2)
         out = torch.cat((out, ma), dim=-1)
 
         out = self.linear1(out)
         out = self.act(out)
+        out = self.dropout1(out)
         out = self.linear2(out)
 
-        out = F.softmax(out, dim=-1)
+        # out = F.softmax(out, dim=-1)
         return out
 
-if __name__ == "__main__":
+def train_personality_model(personality):
     model = CNNModel().cuda()
-
-    # criterion = nn.CrossEntropyLoss()  # 交叉熵损失函数
-    criterion = nn.NLLLoss()  # 负对数似然
+    best = 53
+    criterion = nn.CrossEntropyLoss()  # 交叉熵损失函数
+    # criterion = nn.NLLLoss()  # 负对数似 然
     optimizer = torch.optim.Adadelta(model.parameters(), lr=0.01)  # Adadelta梯度优化器
 
-    train_loader, test_loader = make_train_dataset('cEXT')
-    for epoch in range(350):
+    train_loader, test_loader = make_train_dataset(personality)
+    trainlog = []
+
+    for epoch in range(200):
         loss_list = []
         for batch_x, batch_m, batch_y in train_loader:
             batch_x, batch_m, batch_y = batch_x.cuda(), batch_m.cuda(), batch_y.cuda()
@@ -104,27 +110,57 @@ if __name__ == "__main__":
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-        if (epoch + 1) % 10 == 0:
-            print('Epoch:', '%04d' % (epoch + 1), 'loss =', '{:.6f}'.format(sum(loss_list)/len(loss_list)))
 
-            test_acc_list = []
-            test_loss = 0
-            correct = 0
+        # print('Epoch:', '%04d' % (epoch + 1), 'loss =', '{:.6f}'.format(sum(loss_list)/len(loss_list)))
+
+        test_acc_list = []
+        test_loss_list = []
+        test_correct = 0
+        with torch.no_grad():
             for data, m, target in test_loader:
                 data, m, target = data.cuda(), m.cuda(), target.cuda()
                 output = model(data, m)
+
+                loss = criterion(output, target)  # batch_y类标签就好，不用one-hot形式
+                test_loss_list.append(float(f'{loss}'))
+
                 pred = output.max(1, keepdim=True)[1]  # 找到概率最大的下标
-                correct += pred.eq(target.view_as(pred)).sum().item()
-            test_acc_list.append(100. * correct / len(test_loader.dataset))
-            print('test  Accuracy: {}/{} ({:.2f}%)'.format(correct, len(test_loader.dataset),
-                                                       100. * correct / len(test_loader.dataset)))
-            train_acc_list = []
-            correct = 0
+                test_correct += pred.eq(target.view_as(pred)).sum().item()
+        # test_acc_list.append(100. * correct / len(test_loader.dataset))
+        # print('test  Accuracy: {}/{} ({:.2f}%)'.format(correct, len(test_loader.dataset),
+        # 100. * correct / len(test_loader.dataset)))
+
+        train_correct = 0
+        with torch.no_grad():
             for data, m, target in train_loader:
                 data, m, target = data.cuda(), m.cuda(), target.cuda()
                 output = model(data, m)
                 pred = output.max(1, keepdim=True)[1]  # 找到概率最大的下标
-                correct += pred.eq(target.view_as(pred)).sum().item()
-            train_acc_list.append(100. * correct / len(train_loader.dataset))
-            print('train Accuracy: {}/{} ({:.2f}%)\n'.format(correct, len(train_loader.dataset),
-                                                       100. * correct / len(train_loader.dataset)))
+                train_correct += pred.eq(target.view_as(pred)).sum().item()
+        # train_acc_list.append(100. * correct / len(train_loader.dataset))
+        # print('train Accuracy: {}/{} ({:.2f}%)\n'.format(correct, len(train_loader.dataset),
+        #                                            100. * correct / len(train_loader.dataset)))
+        # columns = ['epoch', 'train loss', 'test loss', 'train acc', 'test acc']
+        batch_log = [epoch, sum(loss_list) / len(loss_list), sum(test_loss_list) / len(test_loss_list),
+                         100. * train_correct / len(train_loader.dataset), 100. * test_correct / len(test_loader.dataset)]
+        print(batch_log)
+        trainlog.append(batch_log)
+
+        if 100. * test_correct / len(test_loader.dataset) > best:
+            best = 100. * test_correct / len(test_loader.dataset)
+            print(f"{personality} epoch-{epoch} test acc:{best}")
+            torch.save({'model': model.state_dict()},
+                       f"{conf.get('model', 'modelPath')}/{personality} personality classification model.pth")
+
+        if epoch %10 == 9:
+            print(f"{personality} epoch-{epoch} finished")
+
+    trainlog = pd.DataFrame(trainlog, columns=['epoch', 'train loss', 'test loss', 'train acc', 'test acc'])
+    trainlog.to_excel(f"{conf.get('model', 'logPath')}/{personality} train log.xlsx")
+
+if __name__ == "__main__":
+    # personalities = ["cEXT", "cNEU", "cAGR", "cCON", "cOPN"]
+    personalities = [ "cNEU", "cAGR", "cCON", "cOPN"]
+    for personality in  personalities:
+        train_personality_model(personality)
+
